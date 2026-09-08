@@ -41,3 +41,4 @@ export {
   matchBytes,
   matchAscii,
 } from "./bytes.js";
+export { h, type Attrs, type AttrValue, type Child } from "./dom.js";

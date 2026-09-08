@@ -26,6 +26,7 @@ npm install @nasdigitaluk/withnate-tool-core
 | `units` | conversions, `formatSize`, `aspectRatio` | yes |
 | `intake` | `attachIntake`, `readHeaderBytes` | no — DOM |
 | `mount` | `mount`, `revealed` | no — DOM |
+| `dom` | `h` | no — DOM |
 
 The split is deliberate and it is the point of the design: **everything with a decision in it is a
 pure function over numbers and bytes, and the DOM is a thin wrapper around it.** That is what makes
@@ -143,11 +144,19 @@ That mistake was already made and corrected once in this codebase — nine MCP s
 byte-for-byte copy of the same three modules, drifted apart before anyone noticed — and the fix was
 to extract, so this starts small on purpose and grows when a second tool actually needs something.
 
+`h` is that rule firing, and it fired late. **Four** tools had a copy of the same tiny element
+builder, and by the time it was extracted they had drifted into **three** variants: two guarded
+against an `undefined` attribute value and child, two did not, and one could not even accept a
+numeric attribute. The two that did not guard would put the literal text `undefined` into an
+attribute or onto the page the first time an optional field was absent — a real bug, sitting in two
+shipped tools, produced by nothing more than copying. The core takes the strictest variant, which is
+a superset of all three, so adopting it is a fix rather than a swap.
+
 ## Testing
 
 ```bash
 npm run lint    # tsc --noEmit
-npm test        # 70 tests
+npm test        # 85 tests
 ```
 
 Test fixtures are file headers built byte by byte rather than checked-in binaries, so every byte a
