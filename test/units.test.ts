@@ -24,8 +24,7 @@ describe("conversion", () => {
   });
 
   it("agrees with the A-series definition", () => {
-    // A4 is 210 x 297 mm by definition, so this is a fixed external check
-    // rather than a restatement of the implementation.
+
     expect(mmToInches(210)).toBeCloseTo(8.268, 3);
     expect(mmToInches(297)).toBeCloseTo(11.693, 3);
   });
@@ -58,9 +57,7 @@ describe("formatting", () => {
   });
 
   it("rounds millimetres to whole numbers and inches to a tenth", () => {
-    // A tenth of an inch is 2.5mm, which is a visible amount on a mount
-    // border, so inches need the decimal. Tenths of a millimetre do not
-    // survive contact with a real frame.
+
     expect(formatLength(8.2677, "in")).toBe('8.3"');
     expect(formatLength(8.2677, "mm")).toBe("210 mm");
   });
@@ -87,9 +84,7 @@ describe("aspectRatio", () => {
   });
 
   it("returns the true ratio for an arbitrary crop rather than rounding to a lie", () => {
-    // 1493:997 is useless to a person, and that is the caller's problem to
-    // present. Rounding it here to "about 3:2" would be a different number
-    // presented as the same one.
+
     expect(aspectRatio(1493, 997)).toEqual([1493, 997]);
   });
 });

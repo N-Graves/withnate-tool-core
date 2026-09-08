@@ -1,29 +1,10 @@
-/**
- * Pixel dimensions and any declared print density, read from the file header.
- *
- * Nothing here decodes an image. Every tool on this site needs width, height
- * and sometimes the declared DPI; none of them need the pixels to answer that,
- * and `createImageBitmap` on a 60 megapixel phone photo costs hundreds of
- * megabytes and a visible stall to learn two integers. Parsing the header is
- * a few hundred bytes of work, runs off the main thread's critical path, and
- * - the reason it is here rather than in a tool - is pure, so it is testable
- * without a browser or a native canvas dependency.
- *
- * Density is read from the container first - PNG `pHYs`, JPEG JFIF - and then
- * from Exif if the container declared nothing. That second step closes a gap
- * this module used to carry and document: cameras and phones write Exif and
- * frequently no JFIF, so a photo straight off a phone reported no density at
- * all and the print-size tool had nothing to explain. The Exif reader arrived
- * with the metadata viewer and was extracted here, which is what it was for.
- */
-
+import { be16, be32, le16, le24, matchAscii, u8 } from "./bytes.js";
 import { exifResolution, parseExif } from "./exif.js";
 import { sniffFormat, type ImageFormat } from "./sniff.js";
+import { CM_PER_INCH, MM_PER_INCH, MM_PER_METRE } from "./units.js";
 
 export interface Density {
-  /** Horizontal pixels per inch as declared by the file. */
   x: number;
-  /** Vertical pixels per inch as declared by the file. */
   y: number;
   source: "png-phys" | "jfif" | "exif";
 }
@@ -32,75 +13,38 @@ export interface Measurement {
   format: ImageFormat;
   width: number;
   height: number;
-  /** What the file *claims*. Null when it declares nothing, which is common and not an error. */
   density: Density | null;
 }
 
-const MM_PER_INCH = 25.4;
-const MM_PER_METRE = 1000;
-
-/** Bounds-checked read. Throws on a truncated file so every caller fails the same way. */
-const at = (b: Uint8Array, i: number): number => {
-  const v = b[i];
-  if (v === undefined) throw new RangeError(`byte ${i} is past the end of the buffer`);
-  return v;
-};
-
-const be16 = (b: Uint8Array, i: number): number => (at(b, i) << 8) | at(b, i + 1);
-const le16 = (b: Uint8Array, i: number): number => at(b, i) | (at(b, i + 1) << 8);
-const le24 = (b: Uint8Array, i: number): number =>
-  at(b, i) | (at(b, i + 1) << 8) | (at(b, i + 2) << 16);
-// `>>> 0` because a PNG dimension with the top bit set would otherwise come
-// back negative through JavaScript's signed 32-bit bitwise operators.
-const be32 = (b: Uint8Array, i: number): number =>
-  ((at(b, i) << 24) | (at(b, i + 1) << 16) | (at(b, i + 2) << 8) | at(b, i + 3)) >>> 0;
-
-const asciiAt = (b: Uint8Array, i: number, s: string): boolean => {
-  for (let k = 0; k < s.length; k += 1) {
-    if (b[i + k] !== s.charCodeAt(k)) return false;
-  }
-  return true;
-};
-
-// --------------------------------------------------------------------- PNG
-
 const measurePng = (b: Uint8Array): Measurement => {
-  // IHDR is required by the spec to be the first chunk, so width and height
-  // sit at fixed offsets: 8 signature + 4 length + 4 type = 16.
   const width = be32(b, 16);
   const height = be32(b, 20);
 
   let density: Density | null = null;
-  // Walk the chunk list for pHYs. It is optional and may appear anywhere
-  // before IDAT, so this cannot be a fixed offset.
   let p = 8;
   while (p + 8 <= b.length) {
     const len = be32(b, p);
     const type = p + 4;
-    if (asciiAt(b, type, "IDAT") || asciiAt(b, type, "IEND")) break;
-    if (asciiAt(b, type, "pHYs") && len === 9 && p + 8 + 9 <= b.length) {
+    if (matchAscii(b, type, "IDAT") || matchAscii(b, type, "IEND")) break;
+    if (matchAscii(b, type, "pHYs") && len === 9 && p + 8 + 9 <= b.length) {
       const d = p + 8;
-      const unit = at(b, d + 8);
-      // unit 1 is metres. unit 0 means the numbers are an aspect ratio only
-      // and carry no physical size, so there is no DPI to report.
-      if (unit === 1) {
+      const perMetreX = be32(b, d);
+      const perMetreY = be32(b, d + 4);
+      if (u8(b, d + 8) === 1 && perMetreX > 0 && perMetreY > 0) {
         density = {
-          x: (be32(b, d) * MM_PER_INCH) / MM_PER_METRE,
-          y: (be32(b, d + 4) * MM_PER_INCH) / MM_PER_METRE,
+          x: (perMetreX * MM_PER_INCH) / MM_PER_METRE,
+          y: (perMetreY * MM_PER_INCH) / MM_PER_METRE,
           source: "png-phys",
         };
       }
       break;
     }
-    p += 12 + len; // length + type + data + crc
+    p += 12 + len;
   }
 
   return { format: "png", width, height, density };
 };
 
-// -------------------------------------------------------------------- JPEG
-
-/** Start-of-frame markers carrying dimensions. C4/C8/CC are tables, not frames. */
 const isSof = (m: number): boolean =>
   (m >= 0xc0 && m <= 0xc3) ||
   (m >= 0xc5 && m <= 0xc7) ||
@@ -109,20 +53,18 @@ const isSof = (m: number): boolean =>
 
 const measureJpeg = (b: Uint8Array): Measurement => {
   let density: Density | null = null;
-  let p = 2; // past SOI
+  let p = 2;
 
   while (p + 4 <= b.length) {
-    if (at(b, p) !== 0xff) {
-      // Fill bytes are legal between segments; skip them rather than giving up.
+    if (u8(b, p) !== 0xff) {
       p += 1;
       continue;
     }
-    const marker = at(b, p + 1);
+    const marker = u8(b, p + 1);
     if (marker === 0xff) {
       p += 1;
       continue;
     }
-    // Standalone markers carry no length word.
     if (marker === 0xd8 || (marker >= 0xd0 && marker <= 0xd9) || marker === 0x01) {
       p += 2;
       continue;
@@ -132,24 +74,21 @@ const measureJpeg = (b: Uint8Array): Measurement => {
     const payload = p + 4;
 
     if (isSof(marker)) {
-      // precision(1) height(2) width(2)
       return { format: "jpeg", height: be16(b, payload + 1), width: be16(b, payload + 3), density };
     }
 
-    if (marker === 0xe0 && asciiAt(b, payload, "JFIF\0")) {
-      const units = at(b, payload + 7);
+    if (marker === 0xe0 && matchAscii(b, payload, "JFIF\0")) {
+      const units = u8(b, payload + 7);
       const x = be16(b, payload + 8);
       const y = be16(b, payload + 10);
-      // units 0 means "aspect ratio only" - the numbers are real but they are
-      // not a density, so reporting them as DPI would be inventing a fact.
-      if (units === 1 && x > 0 && y > 0) density = { x, y, source: "jfif" };
-      else if (units === 2 && x > 0 && y > 0) {
-        density = { x: x * MM_PER_INCH / 10, y: y * MM_PER_INCH / 10, source: "jfif" };
+      if (x > 0 && y > 0) {
+        if (units === 1) density = { x, y, source: "jfif" };
+        else if (units === 2) {
+          density = { x: x * CM_PER_INCH, y: y * CM_PER_INCH, source: "jfif" };
+        }
       }
     }
 
-    // SOS is followed by entropy-coded data, not another segment. Every SOF
-    // precedes it, so if we are here there was none to find.
     if (marker === 0xda) break;
     p = payload + len - 2;
   }
@@ -157,24 +96,18 @@ const measureJpeg = (b: Uint8Array): Measurement => {
   throw new RangeError("no start-of-frame segment found");
 };
 
-// --------------------------------------------------------------------- GIF
-
 const measureGif = (b: Uint8Array): Measurement => ({
   format: "gif",
   width: le16(b, 6),
   height: le16(b, 8),
-  density: null, // GIF has no density field at all.
+  density: null,
 });
 
-// -------------------------------------------------------------------- WebP
-
 const measureWebp = (b: Uint8Array): Measurement => {
-  // 12 bytes of RIFF/size/WEBP, then chunks of [fourcc][size LE32][data].
-  const fourcc = String.fromCharCode(at(b, 12), at(b, 13), at(b, 14), at(b, 15));
+  const fourcc = String.fromCharCode(u8(b, 12), u8(b, 13), u8(b, 14), u8(b, 15));
   const data = 20;
 
   if (fourcc === "VP8X") {
-    // Canvas size is stored minus one, in 24-bit little-endian.
     return {
       format: "webp",
       width: le24(b, data + 4) + 1,
@@ -183,7 +116,6 @@ const measureWebp = (b: Uint8Array): Measurement => {
     };
   }
   if (fourcc === "VP8 ") {
-    // 3-byte frame tag, 3-byte start code, then 14-bit dimensions.
     return {
       format: "webp",
       width: le16(b, data + 6) & 0x3fff,
@@ -192,10 +124,9 @@ const measureWebp = (b: Uint8Array): Measurement => {
     };
   }
   if (fourcc === "VP8L") {
-    // 0x2f signature, then 14 bits width-1 and 14 bits height-1, packed.
-    if (at(b, data) !== 0x2f) throw new RangeError("VP8L signature byte missing");
+    if (u8(b, data) !== 0x2f) throw new RangeError("VP8L signature byte missing");
     const bits =
-      at(b, data + 1) | (at(b, data + 2) << 8) | (at(b, data + 3) << 16) | (at(b, data + 4) << 24);
+      u8(b, data + 1) | (u8(b, data + 2) << 8) | (u8(b, data + 3) << 16) | (u8(b, data + 4) << 24);
     return {
       format: "webp",
       width: (bits & 0x3fff) + 1,
@@ -206,37 +137,21 @@ const measureWebp = (b: Uint8Array): Measurement => {
   throw new RangeError(`unrecognised WebP chunk "${fourcc}"`);
 };
 
-// ------------------------------------------------------------------- public
+const MEASURERS: Record<ImageFormat, (b: Uint8Array) => Measurement> = {
+  png: measurePng,
+  jpeg: measureJpeg,
+  gif: measureGif,
+  webp: measureWebp,
+};
 
-/**
- * Measure an image from its leading bytes.
- *
- * Returns null rather than throwing for anything unreadable - an unsupported
- * format, a truncated file, a header that does not parse. A tool showing "we
- * could not read this file" is a better outcome than an exception the caller
- * has to remember to catch, and there is nothing a caller could do with the
- * distinction between the failure modes anyway.
- */
 export const measureImage = (bytes: Uint8Array): Measurement | null => {
   const format = sniffFormat(bytes);
   if (format === null) return null;
   try {
-    const m =
-      format === "png"
-        ? measurePng(bytes)
-        : format === "jpeg"
-          ? measureJpeg(bytes)
-          : format === "gif"
-            ? measureGif(bytes)
-            : measureWebp(bytes);
-    // A zero dimension is not a measurement, it is a parse that went wrong
-    // quietly. Refuse it here rather than letting it divide by zero later.
+    const m = MEASURERS[format](bytes);
     if (!Number.isFinite(m.width) || !Number.isFinite(m.height) || m.width < 1 || m.height < 1) {
       return null;
     }
-    // The container's own declaration wins. Where a file carries both, JFIF
-    // and Exif are usually written by different tools at different times and
-    // the container field is the one the decoder itself honours.
     if (m.density === null) {
       const exif = parseExif(bytes);
       const res = exif ? exifResolution(exif) : null;

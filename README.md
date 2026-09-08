@@ -19,6 +19,7 @@ npm install @nasdigitaluk/withnate-tool-core
 
 | Module | Exports | Pure? |
 |---|---|---|
+| `bytes` | `u8`, `be16`/`le16`/`le24`/`be32`/`le32`, `matchBytes`, `matchAscii` | yes |
 | `sniff` | `sniffFormat`, `HEADER_BYTES` | yes |
 | `dimensions` | `measureImage` | yes |
 | `exif` | `parseExif`, `exifResolution`, `exifGps`, accessors | yes |
@@ -90,10 +91,31 @@ times and the container field is the one the decoder honours.
 ⚠️ **ResolutionUnit 1 yields no density**, the same rule `pHYs` unit 0 and JFIF units 0 already
 follow: those two numbers are an aspect ratio and carry no physical size.
 
-`parseExif` returns `null` rather than throwing for anything unreadable, and there are tests
-truncating a valid file at five different points to prove it. Metadata is decoration on top of an
-image that is otherwise perfectly good, and a malformed block must never be the reason a tool refuses
-a photo.
+`parseExif` returns `null` rather than throwing for anything unreadable, and a test truncates a valid
+file at every third byte to prove it. Metadata is decoration on top of an image that is otherwise
+perfectly good, and a malformed block must never be the reason a tool refuses a photo.
+
+### The parser treats the file as hostile
+
+Every number in an Exif block — offsets, component counts, directory lengths — is attacker-chosen,
+because "the attacker" is whoever made the file. Four limits hold, and each has a test that fails
+when it is removed:
+
+| Limit | Value | What it stops |
+|---|---|---|
+| Entries per block | 4,096 | A directory claiming 65,535 entries in every one of its IFDs |
+| Components per entry | 1,024 | A tag claiming four billion components, materialised as an array |
+| Block size | 4 MB | A container declaring an Exif segment larger than any real one |
+| IFD depth / revisits | 4 / once | A sub-directory pointing at itself, or a longer cycle |
+
+Text fields are decoded as UTF-8 rather than byte-by-byte — modern phones genuinely write UTF-8 into
+fields the spec calls ASCII — and **C0 control characters and `DEL` are stripped**. A camera name is
+displayed somewhere eventually, and an `ESC[` sequence smuggled through a metadata field into a
+terminal or a log is a real trick, not a hypothetical one. Nothing else is altered.
+
+Values are never trusted as bounds: an entry whose declared value would read past the end of the
+block is skipped, not clamped. All reads go through one bounds-checked accessor (`bytes.u8`), so a
+truncated file fails the same way everywhere instead of silently yielding zeroes.
 
 ## Mounting, and the site's runtime
 
@@ -125,12 +147,33 @@ to extract, so this starts small on purpose and grows when a second tool actuall
 
 ```bash
 npm run lint    # tsc --noEmit
-npm test        # 63 tests
+npm test        # 70 tests
 ```
 
 Test fixtures are file headers built byte by byte rather than checked-in binaries, so every byte a
 test depends on is visible in the diff, and a test can set a density unit or a marker order no
 encoder on this machine would produce.
+
+## Security posture
+
+The strongest property here is what is absent, and it is checked rather than asserted:
+
+- **Zero runtime dependencies.** `dependencies` and `peerDependencies` are both empty. Nothing in
+  the published tarball can be replaced by a compromised upstream, because there is no upstream.
+  `npm audit --omit=dev` reports no vulnerabilities, and that is a real answer rather than a lucky
+  one.
+- **No sinks.** No `innerHTML`, `insertAdjacentHTML`, `eval`, `new Function`, or `document.write`
+  anywhere. This package never builds markup; it returns numbers, strings and typed arrays, and the
+  tools render them with `textContent`.
+- **No network and no storage.** No `fetch`, `XMLHttpRequest`, `WebSocket`, `sendBeacon`,
+  `localStorage`, `sessionStorage`, `indexedDB` or dynamic `import()`. This is what lets the tools
+  claim your file never leaves the tab.
+- **Only `dist`, `README.md` and `LICENSE` are published** — `files` is explicit, so sources, tests
+  and fixtures stay in the repository.
+
+Strings that came out of a file are still **untrusted content**. This package sanitises Exif text of
+control characters only; it does not HTML-escape, because it does not know where the caller is
+putting it. Render with `textContent`, never `innerHTML`.
 
 ## Licence
 

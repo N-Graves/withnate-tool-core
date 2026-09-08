@@ -1,12 +1,3 @@
-/**
- * Exif blocks assembled byte by byte.
- *
- * Built rather than checked in, for the same reason as the header fixtures:
- * every byte a test depends on is visible in the diff, and a builder can set a
- * byte order, a resolution unit or a value that overflows the inline four
- * bytes - none of which any camera on this machine would produce on demand.
- */
-
 export interface Rat {
   n: number;
   d: number;
@@ -14,7 +5,7 @@ export interface Rat {
 
 export interface Entry {
   tag: number;
-  /** 2 ASCII, 3 SHORT, 4 LONG, 5 RATIONAL. */
+
   type: number;
   value: string | number | number[] | Rat | Rat[];
 }
@@ -24,7 +15,7 @@ export const rat = (n: number, d = 1): Rat => ({ n, d });
 const TYPE_SIZE: Record<number, number> = { 1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 7: 1, 9: 4, 10: 8 };
 
 const componentsOf = (e: Entry): number => {
-  if (typeof e.value === "string") return e.value.length + 1; // NUL terminated
+  if (typeof e.value === "string") return e.value.length + 1;
   if (Array.isArray(e.value)) return e.value.length;
   return 1;
 };
@@ -73,25 +64,19 @@ export interface TiffOptions {
   image?: Entry[];
   exif?: Entry[];
   gps?: Entry[];
-  /** Deliberately break the TIFF magic, to prove it is checked. */
+
   badMagic?: boolean;
 }
 
 const IFD_EXIF_POINTER = 0x8769;
 const IFD_GPS_POINTER = 0x8825;
 
-/**
- * A real TIFF block: header, IFD0, optional Exif and GPS sub-directories, and
- * an overflow area for every value too big to sit inside its own entry.
- */
 export const buildTiff = (opts: TiffOptions = {}): Uint8Array => {
   const little = opts.little ?? true;
   const image = [...(opts.image ?? [])];
 
-  // Sub-directories are laid out first so their offsets are known before IFD0
-  // is written. Their contents cannot overflow in these fixtures.
   const subs: Array<{ tag: number; entries: Entry[]; offset: number }> = [];
-  let cursor = 8; // header is 8 bytes; IFD0 starts here
+  let cursor = 8;
   const ifd0Count = image.length + (opts.exif ? 1 : 0) + (opts.gps ? 1 : 0);
   cursor += 2 + ifd0Count * 12 + 4;
 
@@ -99,7 +84,7 @@ export const buildTiff = (opts: TiffOptions = {}): Uint8Array => {
   const pushOverflow = (data: number[]): number => {
     const at = cursor + overflow.length;
     overflow.push(...data);
-    if (overflow.length % 2 === 1) overflow.push(0); // keep offsets even
+    if (overflow.length % 2 === 1) overflow.push(0);
     return at;
   };
 
@@ -150,7 +135,7 @@ export const buildTiff = (opts: TiffOptions = {}): Uint8Array => {
     ifd.u32(1);
     ifd.u32(s.offset);
   }
-  ifd.u32(0); // no thumbnail IFD
+  ifd.u32(0);
 
   return new Uint8Array([...head.bytes, ...ifd.bytes, ...overflow]);
 };
@@ -159,7 +144,6 @@ const be16 = (n: number): number[] => [(n >> 8) & 0xff, n & 0xff];
 const be32 = (n: number): number[] => [(n >>> 24) & 0xff, (n >>> 16) & 0xff, (n >>> 8) & 0xff, n & 0xff];
 const a = (s: string): number[] => [...s].map((c) => c.charCodeAt(0));
 
-/** A JPEG carrying an Exif APP1, and optionally a JFIF APP0 as well. */
 export const jpegWithExif = (
   tiff: Uint8Array,
   opts: { width?: number; height?: number; jfif?: { units: number; x: number; y: number } } = {},
@@ -180,7 +164,6 @@ export const jpegWithExif = (
   return new Uint8Array(bytes);
 };
 
-/** A PNG carrying an eXIf chunk, which unlike JPEG has no Exif prefix. */
 export const pngWithExif = (tiff: Uint8Array, w = 640, h = 480): Uint8Array =>
   new Uint8Array([
     0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,

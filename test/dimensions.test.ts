@@ -13,7 +13,7 @@ describe("PNG", () => {
   });
 
   it("converts a pHYs chunk in pixels per metre to DPI", () => {
-    // 11811 ppm is what encoders write for 300 DPI: 300 / 0.0254 = 11811.02.
+
     const m = measureImage(png(100, 100, { pixelsPerMetre: { x: 11811, y: 11811 } }));
     expect(m?.density?.source).toBe("png-phys");
     expect(m?.density?.x).toBeCloseTo(300, 1);
@@ -21,22 +21,32 @@ describe("PNG", () => {
   });
 
   it("reports no density when pHYs declares an aspect ratio rather than a physical size", () => {
-    // Unit 0 means the two numbers are a ratio and carry no real size. Treating
-    // them as DPI would invent a fact the file does not contain.
+
     const m = measureImage(png(100, 100, { pixelsPerMetre: { x: 1, y: 2 }, physUnit: 0 }));
     expect(m?.density).toBeNull();
   });
 
+  it("reports no density when pHYs declares zero pixels per metre", () => {
+    for (const ppm of [
+      { x: 0, y: 0 },
+      { x: 0, y: 11811 },
+      { x: 11811, y: 0 },
+    ]) {
+      const m = measureImage(png(900, 600, { pixelsPerMetre: ppm, physUnit: 1 }));
+      expect(m?.width).toBe(900);
+      expect(m?.density).toBeNull();
+    }
+  });
+
   it("survives a dimension with the high bit set", () => {
-    // Reads through signed 32-bit bitwise operators, so without the >>> 0 in
-    // be32 this comes back negative and the guard rejects a valid file.
+
     expect(measureImage(png(0x80000001, 10))?.width).toBe(0x80000001);
   });
 });
 
 describe("JPEG", () => {
   it("reads dimensions from SOF0, height before width", () => {
-    // The order is the trap: SOF stores height first. Non-square proves it.
+
     expect(measureImage(jpeg(1600, 900))).toMatchObject({
       format: "jpeg",
       width: 1600,
@@ -65,8 +75,7 @@ describe("JPEG", () => {
   });
 
   it("reads a progressive frame as well as a baseline one", () => {
-    // SOF2 is progressive. Rejecting it would fail on a large share of real
-    // web JPEGs for no reason - the dimension fields are identical.
+
     expect(measureImage(jpeg(800, 600, { sofMarker: 0xc2 }))).toMatchObject({
       width: 800,
       height: 600,
@@ -74,8 +83,7 @@ describe("JPEG", () => {
   });
 
   it("does not mistake a table marker for a frame marker", () => {
-    // 0xC4 is a Huffman table and sits inside the C0-CF range. Treating it as
-    // a frame reads table bytes as dimensions and returns confident nonsense.
+
     const bytes = jpeg(320, 240);
     const withTable = new Uint8Array([
       ...bytes.slice(0, 2),
@@ -125,7 +133,7 @@ describe("WebP", () => {
 
 describe("refusals", () => {
   it("returns null for a format it does not recognise", () => {
-    expect(measureImage(new Uint8Array([0x25, 0x50, 0x44, 0x46]))).toBeNull(); // %PDF
+    expect(measureImage(new Uint8Array([0x25, 0x50, 0x44, 0x46]))).toBeNull();
   });
 
   it("returns null for an empty buffer", () => {
@@ -133,15 +141,12 @@ describe("refusals", () => {
   });
 
   it("returns null for a truncated file rather than throwing", () => {
-    // The signature is intact, so this gets past sniffing and into the parser
-    // with nothing to parse. A tool can show "we could not read this"; an
-    // uncaught RangeError is a blank screen.
+
     expect(measureImage(png(100, 100).slice(0, 12))).toBeNull();
   });
 
   it("returns null for a header that parses to a zero dimension", () => {
-    // A quiet parse failure, not a real measurement. Letting it through gives
-    // a division by zero several layers away from the cause.
+
     expect(measureImage(png(0, 100))).toBeNull();
   });
 
