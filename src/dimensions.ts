@@ -28,10 +28,12 @@ const measurePng = (b: Uint8Array): Measurement => {
     if (matchAscii(b, type, "IDAT") || matchAscii(b, type, "IEND")) break;
     if (matchAscii(b, type, "pHYs") && len === 9 && p + 8 + 9 <= b.length) {
       const d = p + 8;
-      if (u8(b, d + 8) === 1) {
+      const perMetreX = be32(b, d);
+      const perMetreY = be32(b, d + 4);
+      if (u8(b, d + 8) === 1 && perMetreX > 0 && perMetreY > 0) {
         density = {
-          x: (be32(b, d) * MM_PER_INCH) / MM_PER_METRE,
-          y: (be32(b, d + 4) * MM_PER_INCH) / MM_PER_METRE,
+          x: (perMetreX * MM_PER_INCH) / MM_PER_METRE,
+          y: (perMetreY * MM_PER_INCH) / MM_PER_METRE,
           source: "png-phys",
         };
       }

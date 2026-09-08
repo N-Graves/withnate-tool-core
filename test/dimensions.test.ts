@@ -26,6 +26,18 @@ describe("PNG", () => {
     expect(m?.density).toBeNull();
   });
 
+  it("reports no density when pHYs declares zero pixels per metre", () => {
+    for (const ppm of [
+      { x: 0, y: 0 },
+      { x: 0, y: 11811 },
+      { x: 11811, y: 0 },
+    ]) {
+      const m = measureImage(png(900, 600, { pixelsPerMetre: ppm, physUnit: 1 }));
+      expect(m?.width).toBe(900);
+      expect(m?.density).toBeNull();
+    }
+  });
+
   it("survives a dimension with the high bit set", () => {
 
     expect(measureImage(png(0x80000001, 10))?.width).toBe(0x80000001);
