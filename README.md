@@ -21,6 +21,7 @@ npm install @nasdigitaluk/withnate-tool-core
 |---|---|---|
 | `sniff` | `sniffFormat`, `HEADER_BYTES` | yes |
 | `dimensions` | `measureImage` | yes |
+| `exif` | `parseExif`, `exifResolution`, `exifGps`, accessors | yes |
 | `units` | conversions, `formatSize`, `aspectRatio` | yes |
 | `intake` | `attachIntake`, `readHeaderBytes` | no — DOM |
 | `mount` | `mount`, `revealed` | no — DOM |
@@ -68,16 +69,31 @@ Reporting them as DPI would be inventing a fact the file does not contain.
 
 Stated here rather than left to be discovered:
 
-- **JPEG density comes from the JFIF APP0 segment only, not from Exif `XResolution`.** Cameras and
-  phones write Exif and frequently no JFIF, so a photo straight off a phone usually reports
-  `density: null`. That is the absence of a number rather than a wrong one, and it does not affect
-  anything derived from the pixel count. Exif parsing arrives with the metadata viewer and gets
-  extracted back into this module then.
 - **No BMP, TIFF, HEIC or AVIF.** `sniffFormat` returns `null` for them and `measureImage` refuses,
   which is honest. HEIC in particular is what an iPhone produces by default and is worth adding.
 - **`aspectRatio` returns the true reduced ratio, however unhelpful.** A 1493 × 997 crop gives
   `[1493, 997]`, not "about 3:2". Presenting that is the caller's problem; rounding it here would be
   a different number wearing the same name.
+
+## Exif
+
+`parseExif` reads the TIFF block out of a JPEG APP1, a PNG `eXIf` chunk or a WebP `EXIF` chunk, walks
+IFD0 and the Exif and GPS sub-directories, and hands back every entry it could read. `exifResolution`
+and `exifGps` are the two the tools actually want.
+
+**This closed a gap this file used to document.** JPEG density was read from JFIF only, so a photo
+straight off a phone - Exif, no JFIF - reported no declared density at all and the print-size tool had
+nothing to explain. `measureImage` now falls back to Exif, and the container's own declaration still
+wins where a file carries both, because those two are usually written by different tools at different
+times and the container field is the one the decoder honours.
+
+⚠️ **ResolutionUnit 1 yields no density**, the same rule `pHYs` unit 0 and JFIF units 0 already
+follow: those two numbers are an aspect ratio and carry no physical size.
+
+`parseExif` returns `null` rather than throwing for anything unreadable, and there are tests
+truncating a valid file at five different points to prove it. Metadata is decoration on top of an
+image that is otherwise perfectly good, and a malformed block must never be the reason a tool refuses
+a photo.
 
 ## Mounting, and the site's runtime
 
@@ -109,7 +125,7 @@ to extract, so this starts small on purpose and grows when a second tool actuall
 
 ```bash
 npm run lint    # tsc --noEmit
-npm test        # 43 tests
+npm test        # 63 tests
 ```
 
 Test fixtures are file headers built byte by byte rather than checked-in binaries, so every byte a

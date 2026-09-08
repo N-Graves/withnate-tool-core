@@ -16,6 +16,18 @@
 export { sniffFormat, HEADER_BYTES, type ImageFormat } from "./sniff.js";
 export { measureImage, type Measurement, type Density } from "./dimensions.js";
 export {
+  parseExif,
+  exifNumber,
+  exifString,
+  exifResolution,
+  exifGps,
+  type ExifData,
+  type ExifEntry,
+  type ExifIfd,
+  type ExifValue,
+  type Rational,
+} from "./exif.js";
+export {
   MM_PER_INCH,
   inchesToMm,
   mmToInches,
