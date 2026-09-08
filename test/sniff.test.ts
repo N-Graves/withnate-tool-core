@@ -11,9 +11,7 @@ describe("sniffFormat", () => {
   });
 
   it("ignores the name and reads the bytes", () => {
-    // The whole reason this function exists. A PNG saved as .jpg is common,
-    // and trusting File.type would hand it to the JPEG parser, which would
-    // report a corrupt file for one that opens fine everywhere else.
+
     const bytes = png(50, 60);
     expect(sniffFormat(bytes)).toBe("png");
   });
@@ -26,8 +24,7 @@ describe("sniffFormat", () => {
   });
 
   it("requires the third byte of a JPEG signature", () => {
-    // FF D8 alone matches too much. FF D8 FF is the marker that actually
-    // starts a JPEG stream.
+
     expect(sniffFormat(new Uint8Array([0xff, 0xd8, 0x00]))).toBeNull();
     expect(sniffFormat(new Uint8Array([0xff, 0xd8, 0xff]))).toBe("jpeg");
   });
@@ -38,7 +35,7 @@ describe("sniffFormat", () => {
   });
 
   it("returns null for a format it does not support", () => {
-    expect(sniffFormat(new Uint8Array([0x42, 0x4d]))).toBeNull(); // BMP
-    expect(sniffFormat(new Uint8Array([0x49, 0x49, 0x2a, 0x00]))).toBeNull(); // TIFF
+    expect(sniffFormat(new Uint8Array([0x42, 0x4d]))).toBeNull();
+    expect(sniffFormat(new Uint8Array([0x49, 0x49, 0x2a, 0x00]))).toBeNull();
   });
 });

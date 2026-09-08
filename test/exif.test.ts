@@ -34,8 +34,7 @@ describe("parseExif", () => {
   });
 
   it("gives the same answer in both byte orders", () => {
-    // Motorola order is rare in the wild and entirely legal, so a reader that
-    // only handles Intel order works until the day it does not.
+
     const little = parseExif(jpegWithExif(buildTiff({ image: camera, little: true })));
     const big = parseExif(jpegWithExif(buildTiff({ image: camera, little: false })));
     expect(little!.byteOrder).toBe("little");
@@ -44,15 +43,13 @@ describe("parseExif", () => {
   });
 
   it("handles a value that fits inline and one that does not", () => {
-    // Four bytes or fewer live in the entry; anything larger is a pointer.
-    // Getting that boundary wrong reads an offset as a value, or the reverse,
-    // and returns confident nonsense either way.
+
     const d = parseExif(
       jpegWithExif(
         buildTiff({
           image: [
-            { tag: ORIENTATION, type: 3, value: 6 }, // 2 bytes, inline
-            { tag: MAKE, type: 2, value: "A very long manufacturer name" }, // pointer
+            { tag: ORIENTATION, type: 3, value: 6 },
+            { tag: MAKE, type: 2, value: "A very long manufacturer name" },
           ],
         }),
       ),
@@ -66,13 +63,12 @@ describe("parseExif", () => {
       jpegWithExif(buildTiff({ image: camera, exif: [{ tag: ISO, type: 3, value: 400 }] })),
     );
     expect(exifNumber(d!, "exif", ISO)).toBe(400);
-    // Tag numbers repeat across directories, so the directory has to be part
-    // of the key or a GPS tag 1 would collide with an image tag 1.
+
     expect(exifNumber(d!, "image", ISO)).toBeNull();
   });
 
   it("returns null for a block with the wrong TIFF magic", () => {
-    // Without the check, every offset read afterwards is noise presented as data.
+
     expect(parseExif(jpegWithExif(buildTiff({ image: camera, badMagic: true })))).toBeNull();
   });
 
@@ -81,8 +77,7 @@ describe("parseExif", () => {
   });
 
   it("returns null rather than throwing on truncated or corrupt bytes", () => {
-    // Metadata is decoration on top of an image that is otherwise fine. A
-    // malformed block must never be the reason a tool refuses a photo.
+
     const good = jpegWithExif(buildTiff({ image: camera }));
     for (const cut of [12, 20, 30, 40, 60]) {
       expect(() => parseExif(good.slice(0, cut))).not.toThrow();
@@ -109,9 +104,7 @@ describe("exifResolution", () => {
   });
 
   it("returns null for unit 1, which means there is no absolute unit", () => {
-    // The same rule the pHYs and JFIF readers already follow: those two
-    // numbers are an aspect ratio and carry no physical size, so calling them
-    // DPI would invent a fact the file does not contain.
+
     const d = parseExif(jpegWithExif(buildTiff({ image: withRes(72, 72, 1) })));
     expect(exifResolution(d!)).toBeNull();
   });
@@ -156,7 +149,7 @@ describe("exifGps", () => {
   ];
 
   it("converts degrees, minutes and seconds to decimal", () => {
-    // 53 deg 33' 36" N, 0 deg 22' 12" W - somewhere in north Lincolnshire.
+
     const d = parseExif(jpegWithExif(buildTiff({ image: camera, gps: at("N", [53, 33, 36], "W", [0, 22, 12]) })));
     const g = exifGps(d!)!;
     expect(g.latitude).toBeCloseTo(53.56, 4);
@@ -164,8 +157,7 @@ describe("exifGps", () => {
   });
 
   it("makes south and west negative", () => {
-    // Getting the hemisphere wrong puts a Lincolnshire garden in the Atlantic,
-    // which is a wrong answer that looks like a working feature.
+
     const d = parseExif(jpegWithExif(buildTiff({ image: camera, gps: at("S", [33, 55, 0], "E", [151, 12, 0]) })));
     const g = exifGps(d!)!;
     expect(g.latitude).toBeCloseTo(-33.9167, 3);
@@ -185,16 +177,14 @@ describe("measureImage now reads density from Exif", () => {
   ];
 
   it("closes the gap this module used to document", () => {
-    // A photo straight off a phone: Exif, no JFIF. Before this it reported no
-    // declared density at all and the print-size tool had nothing to explain.
+
     const m = measureImage(jpegWithExif(buildTiff({ image: res300 }), { width: 4000, height: 3000 }));
     expect(m).toMatchObject({ width: 4000, height: 3000 });
     expect(m!.density).toEqual({ x: 300, y: 300, source: "exif" });
   });
 
   it("lets the container's own declaration win over Exif", () => {
-    // Where a file carries both, they were usually written by different tools
-    // at different times, and JFIF is the one the decoder itself honours.
+
     const m = measureImage(
       jpegWithExif(buildTiff({ image: res300 }), { jfif: { units: 1, x: 72, y: 72 } }),
     );
