@@ -9,15 +9,15 @@
  * - the reason it is here rather than in a tool - is pure, so it is testable
  * without a browser or a native canvas dependency.
  *
- * Known gap, stated rather than left to be discovered: JPEG density is read
- * from the JFIF APP0 segment only, not from Exif `XResolution`. Cameras and
- * phones write Exif and frequently no JFIF, so a photo straight off a phone
- * usually reports `density: null` here. That is accurate - it is not a wrong
- * number, it is the absence of one - and it does not affect the primary
- * answer, which is derived from the pixel count alone. Exif parsing lands
- * with the metadata viewer and gets extracted back into this module then.
+ * Density is read from the container first - PNG `pHYs`, JPEG JFIF - and then
+ * from Exif if the container declared nothing. That second step closes a gap
+ * this module used to carry and document: cameras and phones write Exif and
+ * frequently no JFIF, so a photo straight off a phone reported no density at
+ * all and the print-size tool had nothing to explain. The Exif reader arrived
+ * with the metadata viewer and was extracted here, which is what it was for.
  */
 
+import { exifResolution, parseExif } from "./exif.js";
 import { sniffFormat, type ImageFormat } from "./sniff.js";
 
 export interface Density {
@@ -25,7 +25,7 @@ export interface Density {
   x: number;
   /** Vertical pixels per inch as declared by the file. */
   y: number;
-  source: "png-phys" | "jfif";
+  source: "png-phys" | "jfif" | "exif";
 }
 
 export interface Measurement {
@@ -233,6 +233,14 @@ export const measureImage = (bytes: Uint8Array): Measurement | null => {
     // quietly. Refuse it here rather than letting it divide by zero later.
     if (!Number.isFinite(m.width) || !Number.isFinite(m.height) || m.width < 1 || m.height < 1) {
       return null;
+    }
+    // The container's own declaration wins. Where a file carries both, JFIF
+    // and Exif are usually written by different tools at different times and
+    // the container field is the one the decoder itself honours.
+    if (m.density === null) {
+      const exif = parseExif(bytes);
+      const res = exif ? exifResolution(exif) : null;
+      if (res) m.density = { x: res.x, y: res.y, source: "exif" };
     }
     return m;
   } catch {
