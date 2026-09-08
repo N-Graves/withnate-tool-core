@@ -1,0 +1,34 @@
+{
+  "name": "@nasdigitaluk/withnate-tool-core",
+  "version": "0.1.0",
+  "publishConfig": { "access": "public" },
+  "description": "Shared spine for the withnate.co.uk browser tools. Header-only image measurement, unit arithmetic, file intake and mounting. No network, no storage, no pixels decoded.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "README.md", "LICENSE"],
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "lint": "tsc --noEmit",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "author": "Nathan Graves",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "git+https://github.com/N-Graves/withnate-tool-core.git" },
+  "bugs": { "url": "https://github.com/N-Graves/withnate-tool-core/issues" },
+  "homepage": "https://github.com/N-Graves/withnate-tool-core#readme",
+  "keywords": ["image", "browser", "client-side", "exif", "dpi", "print", "withnate"]
+}
