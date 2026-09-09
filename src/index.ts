@@ -43,3 +43,4 @@ export {
   matchAscii,
 } from "./bytes.js";
 export { h, type Attrs, type AttrValue, type Child } from "./dom.js";
+export { copyText, type CopyMethod, type CopyResult } from "./clipboard.js";

@@ -27,6 +27,7 @@ npm install @nasdigitaluk/withnate-tool-core
 | `intake` | `attachIntake`, `readHeaderBytes` | no — DOM |
 | `mount` | `mount`, `revealed` | no — DOM |
 | `dom` | `h` | no — DOM |
+| `clipboard` | `copyText` | no — DOM |
 
 The split is deliberate and it is the point of the design: **everything with a decision in it is a
 pure function over numbers and bytes, and the DOM is a thin wrapper around it.** That is what makes
@@ -137,6 +138,32 @@ one call that is easy to forget, and forgetting it leaves injected elements at `
 `attachIntake` *finds* the `<input type="file">` in your markup rather than creating one, because
 the site requires that content never depends on JavaScript to be visible.
 
+## Copying to the clipboard
+
+```ts
+const { ok, method } = await copyText(text);
+```
+
+Three routes, tried in order, and the result says which one worked — `"clipboard"`, `"exec-command"`
+or `"manual"` — so a caller can show the select-it-yourself message only when it is genuinely needed
+rather than on every failure.
+
+Two things about this are not obvious and are the usual reasons a copy button silently does nothing:
+
+- **`navigator.clipboard.writeText` needs a secure context, and WebKit needs it called inside the
+  user-gesture task.** Await anything before it — fetching the text, reading a file — and Safari
+  rejects. That is why this takes the string itself rather than a callback that goes and gets it,
+  and why the call happens before the function awaits anything.
+- **The fallback's scratch `<textarea>` has to be rendered.** `display: none`, `hidden` and
+  `visibility: hidden` each make the selection fail without an error. It is positioned off the
+  visible area at one pixel with zero opacity instead, given `readOnly` so iOS does not raise its
+  keyboard and `contentEditable` so iOS will select it at all, and it is removed and the previous
+  `activeElement` refocused in a `finally` — a copy button that steals focus from the host page is
+  its own bug.
+
+A rejected `writeText` falls through to the older route rather than reporting failure, because the
+common cause is an insecure origin or a refused permission, and `execCommand` still works there.
+
 ## Scope
 
 This was extracted from what the first tool genuinely needed, not designed ahead of five of them.
@@ -170,7 +197,7 @@ of `1500 MB` is a clearer signal that something has gone wrong than a tidy `1.5 
 
 ```bash
 npm run lint    # tsc --noEmit
-npm test        # 93 tests
+npm test        # 107 tests
 ```
 
 Test fixtures are file headers built byte by byte rather than checked-in binaries, so every byte a
@@ -191,6 +218,10 @@ The strongest property here is what is absent, and it is checked rather than ass
 - **No network and no storage.** No `fetch`, `XMLHttpRequest`, `WebSocket`, `sendBeacon`,
   `localStorage`, `sessionStorage`, `indexedDB` or dynamic `import()`. This is what lets the tools
   claim your file never leaves the tab.
+- **One thing does leave the page, and only when a person asks for it.** `copyText` writes to the
+  system clipboard. It is called from a click handler, it writes exactly the string it is given, and
+  it reads the clipboard back never. Said plainly rather than filed under "no storage", because a
+  clipboard write is a real effect outside the tab and the list above would otherwise be misleading.
 - **Only `dist`, `README.md` and `LICENSE` are published** — `files` is explicit, so sources, tests
   and fixtures stay in the repository.
 
