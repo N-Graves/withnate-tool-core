@@ -26,6 +26,7 @@ export {
   convertFromInches,
   formatLength,
   formatSize,
+  formatBytes,
   aspectRatio,
   type LengthUnit,
 } from "./units.js";

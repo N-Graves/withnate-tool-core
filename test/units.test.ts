@@ -3,6 +3,7 @@ import {
   aspectRatio,
   cmToInches,
   dpiFor,
+  formatBytes,
   formatLength,
   formatSize,
   inchesToCm,
@@ -86,5 +87,59 @@ describe("aspectRatio", () => {
   it("returns the true ratio for an arbitrary crop rather than rounding to a lie", () => {
 
     expect(aspectRatio(1493, 997)).toEqual([1493, 997]);
+  });
+});
+
+describe("formatBytes", () => {
+  it("reads in decimal, so a megabyte is a million bytes", () => {
+    expect(formatBytes(1_000_000)).toBe("1 MB");
+    expect(formatBytes(13_213_000)).toBe("13.2 MB");
+  });
+
+  it("does not agree with the binary reading, which is the whole reason it exists", () => {
+
+    expect(formatBytes(13_213_000)).not.toBe("12MB");
+  });
+
+  it("shows plain bytes below a kilobyte, because a tiny file is not 0 KB", () => {
+    expect(formatBytes(0)).toBe("0 B");
+    expect(formatBytes(812)).toBe("812 B");
+    expect(formatBytes(999)).toBe("999 B");
+  });
+
+  it("chooses the tier from the rounded value, so nothing formats as 1000 KB", () => {
+
+    expect(formatBytes(999_500)).toBe("1 MB");
+    expect(formatBytes(999_000)).toBe("999 KB");
+  });
+
+  it("keeps megabytes to one decimal and kilobytes to none", () => {
+    expect(formatBytes(2_400_000)).toBe("2.4 MB");
+    expect(formatBytes(310_400)).toBe("310 KB");
+  });
+
+  it("stays in megabytes past a gigabyte, so an absurd number reads as absurd", () => {
+
+    expect(formatBytes(1_500_000_000)).toBe("1500 MB");
+  });
+
+  it("refuses to render a number that is not a size", () => {
+    expect(formatBytes(Number.NaN)).toBe("—");
+    expect(formatBytes(Number.POSITIVE_INFINITY)).toBe("—");
+    expect(formatBytes(-1)).toBe("—");
+  });
+
+  it("is monotonic across both tier boundaries", () => {
+
+    const sizes = [0, 999, 1000, 1001, 999_499, 999_500, 1_000_000, 9_999_999];
+    const parsed = sizes.map((n) => {
+      const s = formatBytes(n);
+      const value = Number.parseFloat(s);
+      const unit = s.endsWith("MB") ? 1e6 : s.endsWith("KB") ? 1e3 : 1;
+      return value * unit;
+    });
+    for (let i = 1; i < parsed.length; i += 1) {
+      expect(parsed[i]!).toBeGreaterThanOrEqual(parsed[i - 1]!);
+    }
   });
 });

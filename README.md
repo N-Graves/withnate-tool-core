@@ -152,11 +152,25 @@ attribute or onto the page the first time an optional field was absent — a rea
 shipped tools, produced by nothing more than copying. The core takes the strictest variant, which is
 a superset of all three, so adopting it is a fix rather than a swap.
 
+`formatBytes` is the same rule firing again, and this time the drift was in the units themselves.
+There were two implementations: this package's own private one, which was **binary** and rendered
+13,213,000 bytes as `12MB`, and the raster tracer's, which was **decimal** and rendered the same
+number as `13.2 MB`. Both were reachable from one page. The core keeps the decimal one, because that
+is the SI reading of the prefix and what macOS, cameras and phones all report, and because a size
+quoted in MB on an upload form is more often decimal than not.
+
+Nothing visible changed when they were consolidated, which is worth stating rather than assuming:
+`maxBytes` is the only caller of the binary one, and **no tool sets it**, so the string it produced
+had never reached a visitor.
+
+`MB` is deliberately the largest tier. Nothing this library handles reaches a gigabyte, so a reading
+of `1500 MB` is a clearer signal that something has gone wrong than a tidy `1.5 GB` would be.
+
 ## Testing
 
 ```bash
 npm run lint    # tsc --noEmit
-npm test        # 85 tests
+npm test        # 93 tests
 ```
 
 Test fixtures are file headers built byte by byte rather than checked-in binaries, so every byte a

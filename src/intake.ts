@@ -1,4 +1,5 @@
 import { HEADER_BYTES } from "./sniff.js";
+import { formatBytes } from "./units.js";
 
 export interface IntakeOptions {
   onFile: (file: File) => void;
@@ -9,9 +10,6 @@ export interface IntakeOptions {
 
 const DEFAULT_DRAGGING_CLASS = "is-dragging";
 
-const humanBytes = (n: number): string =>
-  n >= 1024 * 1024 ? `${Math.round(n / (1024 * 1024))}MB` : `${Math.round(n / 1024)}KB`;
-
 export const attachIntake = (root: HTMLElement, opts: IntakeOptions): (() => void) => {
   const draggingClass = opts.draggingClass ?? DEFAULT_DRAGGING_CLASS;
   const input = root.querySelector<HTMLInputElement>('input[type="file"]');
@@ -20,7 +18,7 @@ export const attachIntake = (root: HTMLElement, opts: IntakeOptions): (() => voi
     if (!file) return;
     if (opts.maxBytes && file.size > opts.maxBytes) {
       opts.onReject?.(
-        `That file is ${humanBytes(file.size)}. The limit here is ${humanBytes(opts.maxBytes)}.`,
+        `That file is ${formatBytes(file.size)}. The limit here is ${formatBytes(opts.maxBytes)}.`,
       );
       return;
     }

@@ -32,6 +32,14 @@ export const formatSize = (wIn: number, hIn: number, unit: LengthUnit): string =
   return unit === "in" ? `${w} × ${h}"` : `${w} × ${h} ${unit}`;
 };
 
+export const formatBytes = (n: number): string => {
+  if (!Number.isFinite(n) || n < 0) return "—";
+  if (n < 1000) return `${Math.round(n)} B`;
+  const kb = Math.round(n / 1000);
+  if (kb < 1000) return `${kb} KB`;
+  return `${roundTo(n / 1e6, 1)} MB`;
+};
+
 const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
 
 export const aspectRatio = (width: number, height: number): [number, number] => {
